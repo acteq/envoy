@@ -508,13 +508,13 @@ Utility::protobufAddressSocketType(const envoy::api::v2::core::Address& proto_ad
   }
 }
 
-Api::IoCallUint64Result Utility::writeToSocket(Network::Socket& socket, Buffer::RawSlice* slices,
+Api::IoCallUint64Result Utility::writeToSocket(Network::IoHandle& handle, Buffer::RawSlice* slices,
                                                uint64_t num_slices, const Address::Ip* local_ip,
                                                const Address::Instance& peer_address) {
   Api::IoCallUint64Result send_result(
       /*rc=*/0, /*err=*/Api::IoErrorPtr(nullptr, Network::IoSocketError::deleteIoError));
   do {
-    send_result = socket.ioHandle().sendmsg(slices, num_slices, 0, local_ip, peer_address);
+    send_result = handle.sendmsg(slices, num_slices, 0, local_ip, peer_address);
   } while (!send_result.ok() &&
            // Send again if interrupted.
            send_result.err_->getErrorCode() == Api::IoError::IoErrorCode::Interrupt);

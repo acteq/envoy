@@ -1,30 +1,33 @@
-#include "common/network/address_impl.h"
-#include "common/network/listen_socket_impl.h"
-
 #include "test/integration/integration.h"
-#include "test/integration/utility.h"
 
 namespace Envoy {
+namespace {
 
-std::string udp_echo_config;
+std::string udp_proxy_config; // fixfix
 
-class UdpEchoIntegrationTest : public testing::TestWithParam<Network::Address::IpVersion>,
-                               public BaseIntegrationTest {
+class UdpProxyIntegrationTest : public testing::TestWithParam<Network::Address::IpVersion>,
+                                public BaseIntegrationTest {
 public:
-  UdpEchoIntegrationTest() : BaseIntegrationTest(GetParam(), udp_echo_config) {}
+  UdpProxyIntegrationTest() : BaseIntegrationTest(GetParam(), udp_proxy_config) {}
 
   // Called once by the gtest framework before any UdpEchoIntegrationTests are run.
   static void SetUpTestSuite() {
-    udp_echo_config = ConfigHelper::BASE_UDP_LISTENER_CONFIG + R"EOF(
+    udp_proxy_config = ConfigHelper::BASE_UDP_LISTENER_CONFIG + R"EOF(
     listener_filters:
-      name: envoy.listener.udpecho
+      name: envoy.filters.udp.udp_proxy
+      typed_config:
+        '@type': type.googleapis.com/envoy.config.filter.udp.udp_proxy.v2alpha.UdpProxyConfig
+        cluster: cluster_0
       )EOF";
   }
 
   /**
    * Initializer for an individual test.
    */
-  void SetUp() override { BaseIntegrationTest::initialize(); }
+  void SetUp() override {
+    udp_fake_upstream_ = true;
+    BaseIntegrationTest::initialize();
+  }
 
   /**
    *  Destructor for an individual test.
@@ -88,18 +91,18 @@ public:
   }
 };
 
-INSTANTIATE_TEST_SUITE_P(IpVersions, UdpEchoIntegrationTest,
+INSTANTIATE_TEST_SUITE_P(IpVersions, UdpProxyIntegrationTest,
                          testing::ValuesIn(TestEnvironment::getIpVersionsForTest()),
                          TestUtility::ipTestParamsToString);
 
-TEST_P(UdpEchoIntegrationTest, HelloWorldOnLoopback) {
+TEST_P(UdpProxyIntegrationTest, HelloWorldOnLoopback) {
   uint32_t port = lookupPort("listener_0");
   auto listener_address = Network::Utility::resolveUrl(
       fmt::format("tcp://{}:{}", Network::Test::getLoopbackAddressUrlString(version_), port));
   requestResponseWithListenerAddress(listener_address);
 }
 
-TEST_P(UdpEchoIntegrationTest, HelloWorldOnNonLocalAddress) {
+/*TEST_P(UdpProxyIntegrationTest, HelloWorldOnNonLocalAddress) {
   uint32_t port = lookupPort("listener_0");
   Network::Address::InstanceConstSharedPtr listener_address;
   if (version_ == Network::Address::IpVersion::v4) {
@@ -121,6 +124,7 @@ TEST_P(UdpEchoIntegrationTest, HelloWorldOnNonLocalAddress) {
   }
 
   requestResponseWithListenerAddress(listener_address);
-}
+}*/
 
+} // namespace
 } // namespace Envoy

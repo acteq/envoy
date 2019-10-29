@@ -16,6 +16,7 @@
 #include "common/network/address_impl.h"
 #include "common/network/listen_socket_impl.h"
 #include "common/network/raw_buffer_socket.h"
+#include "common/network/socket_option_factory.h"
 #include "common/network/utility.h"
 
 #include "server/connection_handler_impl.h"
@@ -357,7 +358,7 @@ FakeUpstream::FakeUpstream(const std::string& uds_path, FakeHttpConnection::Type
 
 static Network::SocketPtr
 makeTcpListenSocket(const Network::Address::InstanceConstSharedPtr& address) {
-  return Network::SocketPtr{new Network::TcpListenSocket(address, nullptr, true)};
+  return std::make_unique<Network::TcpListenSocket>(address, nullptr, true);
 }
 
 static Network::SocketPtr makeTcpListenSocket(uint32_t port, Network::Address::IpVersion version) {
@@ -365,14 +366,24 @@ static Network::SocketPtr makeTcpListenSocket(uint32_t port, Network::Address::I
       Network::Utility::parseInternetAddress(Network::Test::getAnyAddressString(version), port));
 }
 
+static Network::SocketPtr
+makeUdpListenSocket(const Network::Address::InstanceConstSharedPtr& address) {
+  auto socket = std::make_unique<Network::UdpListenSocket>(address, nullptr, true);
+  // fixfix commen options
+  socket->addOptions(Network::SocketOptionFactory::buildIpPacketInfoOptions());
+  socket->addOptions(Network::SocketOptionFactory::buildRxQueueOverFlowOptions());
+  return socket;
+}
+
 FakeUpstream::FakeUpstream(const Network::Address::InstanceConstSharedPtr& address,
                            FakeHttpConnection::Type type, Event::TestTimeSystem& time_system,
-                           bool enable_half_close)
-    : FakeUpstream(Network::Test::createRawBufferSocketFactory(), makeTcpListenSocket(address),
+                           bool enable_half_close, bool udp_fake_upstream)
+    : FakeUpstream(Network::Test::createRawBufferSocketFactory(),
+                   udp_fake_upstream ? makeUdpListenSocket(address) : makeTcpListenSocket(address),
                    type, time_system, enable_half_close) {
-  ENVOY_LOG(info, "starting fake server on socket {}:{}. Address version is {}",
+  ENVOY_LOG(info, "starting fake server on socket {}:{}. Address version is {}. UDP={}",
             address->ip()->addressAsString(), address->ip()->port(),
-            Network::Test::addressVersionAsString(address->ip()->version()));
+            Network::Test::addressVersionAsString(address->ip()->version()), udp_fake_upstream);
 }
 
 FakeUpstream::FakeUpstream(uint32_t port, FakeHttpConnection::Type type,
@@ -381,7 +392,7 @@ FakeUpstream::FakeUpstream(uint32_t port, FakeHttpConnection::Type type,
     : FakeUpstream(Network::Test::createRawBufferSocketFactory(),
                    makeTcpListenSocket(port, version), type, time_system, enable_half_close) {
   ENVOY_LOG(info, "starting fake server on port {}. Address version is {}",
-            this->localAddress()->ip()->port(), Network::Test::addressVersionAsString(version));
+            localAddress()->ip()->port(), Network::Test::addressVersionAsString(version));
 }
 
 FakeUpstream::FakeUpstream(Network::TransportSocketFactoryPtr&& transport_socket_factory,
@@ -390,7 +401,7 @@ FakeUpstream::FakeUpstream(Network::TransportSocketFactoryPtr&& transport_socket
     : FakeUpstream(std::move(transport_socket_factory), makeTcpListenSocket(port, version), type,
                    time_system, false) {
   ENVOY_LOG(info, "starting fake SSL server on port {}. Address version is {}",
-            this->localAddress()->ip()->port(), Network::Test::addressVersionAsString(version));
+            localAddress()->ip()->port(), Network::Test::addressVersionAsString(version));
 }
 
 FakeUpstream::FakeUpstream(Network::TransportSocketFactoryPtr&& transport_socket_factory,
@@ -432,9 +443,9 @@ bool FakeUpstream::createNetworkFilterChain(Network::Connection& connection,
 
 bool FakeUpstream::createListenerFilterChain(Network::ListenerFilterManager&) { return true; }
 
-bool FakeUpstream::createUdpListenerFilterChain(Network::UdpListenerFilterManager&,
-                                                Network::UdpReadFilterCallbacks&) {
-  return true;
+void FakeUpstream::createUdpListenerFilterChain(Network::UdpListenerFilterManager& udp_listener,
+                                                Network::UdpReadFilterCallbacks& callbacks) {
+  udp_listener.addReadFilter(std::make_unique<FakeUpstreamUdpFilter>(*this, callbacks));
 }
 
 void FakeUpstream::threadRoutine() {
@@ -543,6 +554,11 @@ SharedConnectionWrapper& FakeUpstream::consumeConnection() {
   connection_wrapper->set_parented();
   connection_wrapper->moveBetweenLists(new_connections_, consumed_connections_);
   return connection_wrapper->shared_connection();
+}
+
+void FakeUpstream::onRecvDatagram(Network::UdpRecvData& data) {
+  received_datagrams_.emplace_back(std::move(data));
+  ASSERT(false);
 }
 
 AssertionResult FakeRawConnection::waitForData(uint64_t num_bytes, std::string* data,

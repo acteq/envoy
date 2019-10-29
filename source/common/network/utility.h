@@ -289,13 +289,13 @@ public:
 
   /**
    * Send a packet via given UDP socket with specific source address.
-   * @param socket is the UDP socket used to send.
+   * @param socket is the UDP socket used to send. fixfix
    * @param slices points to the buffers containing the packet.
    * @param num_slices is the number of buffers.
    * @param local_ip is the source address to be used to send.
    * @param peer_address is the destination address to send to.
    */
-  static Api::IoCallUint64Result writeToSocket(Network::Socket& socket, Buffer::RawSlice* slices,
+  static Api::IoCallUint64Result writeToSocket(Network::IoHandle& handle, Buffer::RawSlice* slices,
                                                uint64_t num_slices, const Address::Ip* local_ip,
                                                const Address::Instance& peer_address);
 

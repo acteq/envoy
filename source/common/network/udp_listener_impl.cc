@@ -134,7 +134,7 @@ Api::IoCallUint64Result UdpListenerImpl::send(const UdpSendData& send_data) {
   STACK_ARRAY(slices, Buffer::RawSlice, num_slices);
   buffer.getRawSlices(slices.begin(), num_slices);
   Api::IoCallUint64Result send_result = Utility::writeToSocket(
-      socket_, slices.begin(), num_slices, send_data.local_ip_, send_data.peer_address_);
+      socket_.ioHandle(), slices.begin(), num_slices, send_data.local_ip_, send_data.peer_address_);
 
   // The send_result normalizes the rc_ value to 0 in error conditions.
   // The drain call is hence 'safe' in success and failure cases.
